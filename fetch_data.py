@@ -6,6 +6,7 @@
 
 import pymongo
 import time
+import pytz
 import getopt
 import datetime
 from functools import wraps
@@ -21,6 +22,7 @@ engine = create_engine('mysql+mysqldb://root:root@127.0.0.1:3306/db_srv_monitor'
 DBSession = sessionmaker(bind=engine)
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+TZ = pytz.timezone('Asia/Shanghai')
 
 item_list = [
         {'counter_name':'server.cpu.usage', 'data':['counter_volume'], 'key':['cpu_u']},
@@ -105,11 +107,16 @@ def subqry_mongo(col, host, item):
     for it in item['data']:
         value.append(inner_recur_access(latest_rec, it))
 
-    return dict(zip(item['key'], value)), time.mktime(latest_rec['timestamp'].timetuple())
+    # set time zone UTC -> Asia/Shanghai
+    local_dt = latest_rec['timestamp'].replace(tzinfo = pytz.utc).astimezone(TZ)
+    local_time = TZ.normalize(local_dt)
+
+    # Return value dict and timestamp
+    return dict(zip(item['key'], value)), time.mktime(local_time.timetuple())
     
 @timeit
 def fetch_mongo():
-    conn = pymongo.Connection('127.0.0.1', 27017)
+    conn = pymongo.Connection('10.0.96.1', 27017)
     db = conn['ceilometer']
     col = db['server']
 

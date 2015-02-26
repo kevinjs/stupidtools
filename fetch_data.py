@@ -152,3 +152,9 @@ if __name__=='__main__':
     insert_mysql(fetch_mongo())
     print '---'
 
+# put these lines into a file to /etc/cron.d/ and restart cron service.
+#
+#SHELL=/bin/sh
+#PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+#*/5 * * * * root /usr/bin/fetch_data >> /var/log/fetch_data.log 2>&1
+#

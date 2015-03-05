@@ -29,10 +29,27 @@ item_list = [
         {'counter_name':'server.mem.usage', 'data':['counter_volume', 'resource_metadata*mem_total'], 'key':['mem_u', 'mem_t']},
         {'counter_name':'server.disk.util', 'data':['counter_volume', 'resource_metadata*capacity'], 'key':['disk_u', 'disk_t']},
         {'counter_name':'server.net.bytes.in', 'data':['counter_volume'], 'key':['net_b_in']},
-        {'counter_name':'server.net.bytes.out', 'data':['counter_volume'], 'key':['net_b_out']}
+        {'counter_name':'server.net.bytes.out', 'data':['counter_volume'], 'key':['net_b_out']},
+        {'counter_name':'server.usage', 'data':['counter_volume', 'resource_metadata*cpu_total', 'resource_metadata*cpu_used', 'resource_metadata*mem_used', 'resource_metadata*disk_used'], 'key':['vm_n', 'cpu_n', 'cpu_o', 'mem_o', 'disk_o']}
 ]
 
 Base = declarative_base()
+
+class CloudUsage(Base):
+    __tablename__ = 't_cloudusage'
+
+    id = Column(Integer, primary_key=True)
+    cpu_n = Column(Integer)
+    cpu_o = Column(Integer)
+    mem_t = Column(Float(precision=2))
+    mem_o = Column(Float(precision=2))
+    disk_t = Column(Float(precision=2))
+    disk_o = Column(Float(precision=2))
+    vm_n = Column(Integer)
+    rec_time = Column(Integer)
+
+    def __str__(self):
+        return '%s,%s,%s,%s,%s,%s,%s' %(self.cpu_n,self.cpu_o,self.mem_t,self.mem_o,self.disk_t,self.disk_o,self.vm_n)
 
 class SrvStat(Base):
     __tablename__ = 't_srvstat'
@@ -50,13 +67,27 @@ class SrvStat(Base):
     net_b_out = Column(Float(precision=2))
     rec_time = Column(Integer)
 
+    #add features (number and occupied)
+    cpu_n = Column(Integer)
+    cpu_o = Column(Integer)
+    mem_o = Column(Float(precision=2))
+    disk_o = Column(Float(precision=2))
+    vm_n = Column(Integer)
+
+    def __str__(self):
+        return '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' %(self.host_name,self.host_ip,self.status,self.cpu_u,self.mem_u,self.mem_t,self.disk_u,self.disk_t,self.net_b_in,self.net_b_out,self.rec_time,self.cpu_n,self.cpu_o,self.mem_o,self.disk_o,self.vm_n)
+
 def timeit(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
         end = time.time()
-        print 'Run %s at %s cost:%s sec' %(func.__name__, datetime.datetime.utcnow(),round(end-start, 4))
+
+        dt_now = datetime.datetime.utcnow()
+        local_dt = dt_now.replace(tzinfo = pytz.utc).astimezone(TZ)
+        local_time = TZ.normalize(local_dt)
+        print 'Run %s at %s cost:%s sec' %(func.__name__, local_time,round(end-start, 4))
         return result
     return wrapper
 
@@ -78,7 +109,31 @@ def insert_mysql(data):
         except:
             pass
 
+    def inner_recs_print(rec_list):
+        for it in rec_list:
+            print it
+
+    # Compute cloud usage
+    session = DBSession()
+    cu = CloudUsage(cpu_n=0,cpu_o=0,mem_t=0,mem_o=0,disk_t=0,disk_o=0,vm_n=0,rec_time=-1)
+    for it in data:
+        cu.cpu_n += it.cpu_n
+        cu.cpu_o += it.cpu_o
+        cu.mem_t += it.mem_t
+        cu.mem_o += it.mem_o
+        cu.disk_t += it.disk_t
+        cu.disk_o += it.disk_o
+        cu.vm_n += it.vm_n
+        if cu.rec_time < it.rec_time:
+            cu.rec_time = it.rec_time
+    session.add(cu)
+    session.commit()
+    session.close()
+
     inner_recs_insert(data)
+
+    #print cu
+    #inner_recs_print(data)
 
 def subqry_mongo(col, host, item):
     def inner_recur_access(tar_dict, key_str, sp='*'):
@@ -153,6 +208,7 @@ def fetch_mongo():
         else:
             comb_unit.status = 'shutdown'
         monitor_data.append(comb_unit)
+    conn.close()
     return monitor_data
 
 if __name__=='__main__':
